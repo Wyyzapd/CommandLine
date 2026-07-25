@@ -1,4 +1,4 @@
-﻿#ifndef _CommandLine_
+#ifndef _CommandLine_
 #define _CommandLine_
 
 #include <cstdint>
@@ -262,8 +262,9 @@ protected:
  */
 class CommandLine {
 public:
+	using Map = std::unordered_map<std::uint32_t , CommonData>;
 
-	static void Get( std::unordered_map<std::uint32_t , CommonData>& Command ) {
+	static void Get( Map& Command ) {
 		Command.clear( );
 		Command.reserve( 16 );
 
@@ -363,7 +364,16 @@ public:
 				return data;
 			}
 
-			data.SetString( expanded_value );
+			// Not a valid number, treat as string
+			// Remove any remaining surrounding quotes (in case they survived tokenization)
+			WString final_string = expanded_value;
+			if ( final_string.length( ) >= 2 ) {
+				if ( ( final_string [ 0 ] == L'"' && final_string [ final_string.length( ) - 1 ] == L'"' ) ||
+					 ( final_string [ 0 ] == L'\'' && final_string [ final_string.length( ) - 1 ] == L'\'' ) ) {
+					final_string = final_string.substr( 1 , final_string.length( ) - 2 );
+				}
+			}
+			data.SetString( final_string );
 			return data;
 			};
 
@@ -621,11 +631,11 @@ private:
 					WString var_name;
 					var_name.Assign( var_start , static_cast< std::size_t >( var_end - var_start ) );
 
-					DWORD size = GetEnvironmentVariableW( var_name.c_str( ) , nullptr , 0 );
+					DWORD size = LI_FN( GetEnvironmentVariableW ) ( var_name.c_str( ) , nullptr , 0 );
 
 					if ( size > 0 ) {
 						Array<wchar_t> buffer( size );
-						DWORD actual_size = GetEnvironmentVariableW( var_name.c_str( ) , buffer.data( ) , size );
+						DWORD actual_size = LI_FN( GetEnvironmentVariableW ) ( var_name.c_str( ) , buffer.data( ) , size );
 
 						if ( actual_size > 0 && actual_size < size ) {
 							result.Append( buffer.data( ) );
@@ -653,11 +663,11 @@ private:
 					WString var_name;
 					var_name.Assign( var_start , static_cast< std::size_t >( var_end - var_start ) );
 
-					DWORD size = GetEnvironmentVariableW( var_name.c_str( ) , nullptr , 0 );
+					DWORD size = LI_FN( GetEnvironmentVariableW ) ( var_name.c_str( ) , nullptr , 0 );
 
 					if ( size > 0 ) {
 						Array<wchar_t> buffer( size );
-						DWORD actual_size = GetEnvironmentVariableW( var_name.c_str( ) , buffer.data( ) , size );
+						DWORD actual_size = LI_FN( GetEnvironmentVariableW ) ( var_name.c_str( ) , buffer.data( ) , size );
 
 						if ( actual_size > 0 && actual_size < size ) {
 							result.Append( buffer.data( ) );
@@ -876,6 +886,7 @@ private:
 	static WString RemoveQuotesAndEscapes( const WString& str ) {
 		WString result = str;
 
+		// First pass: remove surrounding quotes
 		if ( result.length( ) > 1 ) {
 			if ( ( result.BeginsWith( L'"' ) && result.EndsWith( L'"' ) ) ||
 				( result.BeginsWith( L'\'' ) && result.EndsWith( L'\'' ) ) ) {
@@ -883,7 +894,18 @@ private:
 			}
 		}
 
-		return ProcessEscapeSequences( result );
+		// Process escape sequences
+		result = ProcessEscapeSequences( result );
+		
+		// Second pass: remove quotes again in case escape processing revealed them
+		if ( result.length( ) > 1 ) {
+			if ( ( result [ 0 ] == L'"' && result [ result.length( ) - 1 ] == L'"' ) ||
+				 ( result [ 0 ] == L'\'' && result [ result.length( ) - 1 ] == L'\'' ) ) {
+				result = result.substr( 1 , result.length( ) - 2 );
+			}
+		}
+		
+		return result;
 	}
 
 	static std::size_t FindEqualSignOutsideQuotes( const WString& str ) {
@@ -909,10 +931,6 @@ private:
 		return WString::npos;
 	}
 };
-
-
-
-
 
 
 
